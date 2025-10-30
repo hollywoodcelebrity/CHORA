@@ -26,7 +26,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            /* touch-action: none; Removed as touch events are now explicitly handled */
+            touch-action: none; /* Prevents default mobile behaviors like scrolling */
         }
 
         #ui-overlay {
@@ -152,14 +152,6 @@
         const MAX_CAMERA_Z = 200; 
         const ZOOM_SPEED = 5; 
 
-        // --- Touch State Variables ---
-        let touchStartDistance = 0;
-        let lastTouchX = 0;
-        let lastTouchY = 0;
-        let touchStartTime = 0; // New: To detect short taps
-        const MAX_TAP_DURATION = 300; // milliseconds
-        const MAX_TAP_MOVEMENT = 10; // pixels
-
         // --- AI Caching and State ---
         let wordCache = []; 
         let wordGenerationCount = 0; 
@@ -218,7 +210,7 @@
                     sustain: 0.8, 
                     release: 5 
                 },
-                volume: 0 // ADJUSTED: Max volume
+                volume: 0 // ADJUSTED: Increased volume from -5 to 0 dB (Max volume)
             }).connect(delay); 
             
             // 3. Increase Master Gain to boost overall volume (if possible)
@@ -317,175 +309,33 @@
             // 5. Create Particles
             createParticles();
 
-            // 6. Event listeners (Mouse)
+            // 6. Event listeners
             window.addEventListener('resize', onWindowResize);
             container.addEventListener('mousedown', onMouseDown);
             container.addEventListener('mouseup', onMouseUp);
             container.addEventListener('mousemove', onMouseMove);
             container.addEventListener('click', onClick);
             container.addEventListener('wheel', onMouseWheel); 
-
-            // 7. Event listeners (Touch)
-            container.addEventListener('touchstart', onTouchStart);
-            container.addEventListener('touchmove', onTouchMove);
-            container.addEventListener('touchend', onTouchEnd);
             
             // Start the animation loop
             animate();
         }
 
-        // --- Touch Handlers ---
+        /**
+         * Handles mouse wheel scrolling for zooming in and out.
+         */
+        function onMouseWheel(event) {
+            // Prevent the default scroll behavior on the page
+            event.preventDefault();
 
-        function getTouchDistance(touches) {
-            if (touches.length < 2) return 0;
-            const dx = touches[0].clientX - touches[1].clientX;
-            const dy = touches[0].clientY - touches[1].clientY;
-            return Math.sqrt(dx * dx + dy * dy);
+            // Adjust camera position Z based on scroll delta.
+            const delta = event.deltaY * 0.1 * ZOOM_SPEED;
+
+            camera.position.z += delta;
+
+            // Apply zoom constraints
+            camera.position.z = Math.max(MIN_CAMERA_Z, Math.min(MAX_CAMERA_Z, camera.position.z));
         }
-
-        function onTouchStart(event) {
-            // Check for multi-touch first
-            if (event.touches.length >= 2) {
-                // Two or more touches for zooming/pinching
-                isDragging = false; 
-                touchStartDistance = getTouchDistance(event.touches);
-            } else if (event.touches.length === 1) {
-                // Single touch for rotation/click detection
-                isDragging = true;
-                lastTouchX = event.touches[0].clientX;
-                lastTouchY = event.touches[0].clientY;
-                touchStartTime = Date.now(); // Record start time for tap check
-            }
-            
-            if (!isMusicPlaying) {
-                startAmbientMusic();
-            }
-            event.preventDefault(); // Prevent scrolling/default browser action
-        }
-
-        function onTouchMove(event) {
-            event.preventDefault(); // Prevent scrolling/default browser action
-            
-            if (event.touches.length === 1 && isDragging) {
-                // Single touch handles rotation
-                const touchX = event.touches[0].clientX;
-                const touchY = event.touches[0].clientY;
-
-                const deltaX = touchX - lastTouchX;
-                const deltaY = touchY - lastTouchY;
-
-                // Check if movement is significant enough to cancel a 'click'
-                if (Math.abs(deltaX) > MAX_TAP_MOVEMENT || Math.abs(deltaY) > MAX_TAP_MOVEMENT) {
-                    isClick = false; 
-                }
-
-                rotationTarget.y += deltaX * rotationSpeed * 2; // Increased sensitivity for touch
-                rotationTarget.x += deltaY * rotationSpeed * 2; // Increased sensitivity for touch
-
-                rotationTarget.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationTarget.x));
-
-                lastTouchX = touchX;
-                lastTouchY = touchY;
-
-            } else if (event.touches.length >= 2) {
-                // Multi-touch handles pinch-to-zoom
-                const currentDistance = getTouchDistance(event.touches);
-
-                if (touchStartDistance > 0) {
-                    const deltaDistance = touchStartDistance - currentDistance;
-                    
-                    // Zoom logic (inverted pinch = zoom in)
-                    const delta = deltaDistance * 0.1 * ZOOM_SPEED * 0.1; 
-
-                    camera.position.z += delta;
-                    camera.position.z = Math.max(MIN_CAMERA_Z, Math.min(MAX_CAMERA_Z, camera.position.z));
-                    
-                    // Update start distance for continuous zooming
-                    touchStartDistance = currentDistance;
-                }
-            }
-        }
-
-        function onTouchEnd(event) {
-            // Check for a single-touch tap that qualifies as a 'click'
-            const touchDuration = Date.now() - touchStartTime;
-
-            if (isDragging && touchDuration < MAX_TAP_DURATION && isClick) {
-                 // Simulate a successful single click for word generation
-                 if (interactionState === 'vortex') {
-                    if (!isMusicPlaying) {
-                        startAmbientMusic();
-                    }
-                    if (isMusicPlaying) {
-                        shiftMusicMood();
-                    }
-                    generateAndDisplayWord();
-                 }
-            }
-
-            isDragging = false;
-            isClick = true; // Reset click flag for next touch
-            touchStartDistance = 0; 
-        }
-
-        // --- Mouse Handlers (Existing, but now work alongside touch) ---
-
-        function onMouseDown(event) {
-            isDragging = true;
-            previousMousePosition = { x: event.clientX, y: event.clientY };
-            isClick = true; // Reset mouse click flag
-            
-            // START MUSIC ON ANY INTERACTION
-            if (!isMusicPlaying) {
-                 startAmbientMusic();
-            }
-        }
-
-        function onMouseUp(event) {
-            isDragging = false;
-        }
-
-        function onMouseMove(event) {
-            if (!isDragging) return; 
-
-            const deltaX = event.clientX - previousMousePosition.x;
-            const deltaY = event.clientY - previousMousePosition.y;
-            
-            // Check if movement is significant enough to cancel a 'click'
-            if (Math.abs(deltaX) > dragThreshold || Math.abs(deltaY) > dragThreshold) {
-                isClick = false;
-            }
-
-            rotationTarget.y += deltaX * rotationSpeed;
-            rotationTarget.x += deltaY * rotationSpeed;
-
-            rotationTarget.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationTarget.x));
-
-            previousMousePosition = { x: event.clientX, y: event.clientY };
-        }
-
-        // The mouse click handler remains, but isClick is now set in mouse/touch move
-        function onClick(event) {
-            if (isClick && interactionState === 'vortex') {
-                event.preventDefault();
-                
-                if (!isMusicPlaying) {
-                    startAmbientMusic();
-                }
-
-                if (isMusicPlaying) {
-                    shiftMusicMood();
-                }
-
-                generateAndDisplayWord();
-            }
-        }
-
-        const dragThreshold = 5;
-        // NOTE: The separate mouse event handlers were removed/simplified as the main functions now handle setting isClick/isDragging.
-
-
-        // --- Particle Logic (Core functions remain the same) ---
 
         /**
          * Calculates the desired elliptical radius at a given yRatio (0 at bottom, 1 at top).
@@ -569,7 +419,67 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
         
-        // --- Interaction Handlers (Continued) ---
+        // --- Interaction Handlers ---
+
+        function onMouseDown(event) {
+            isDragging = true;
+            previousMousePosition = { x: event.clientX, y: event.clientY };
+            // START MUSIC ON ANY INTERACTION
+            if (!isMusicPlaying) {
+                 startAmbientMusic();
+            }
+        }
+
+        function onMouseUp(event) {
+            isDragging = false;
+        }
+
+        function onMouseMove(event) {
+            if (!isDragging) return; 
+
+            const deltaX = event.clientX - previousMousePosition.x;
+            const deltaY = event.clientY - previousMousePosition.y;
+
+            // Rotation is the only thing happening on drag now.
+
+            rotationTarget.y += deltaX * rotationSpeed;
+            rotationTarget.x += deltaY * rotationSpeed;
+
+            rotationTarget.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationTarget.x));
+
+            previousMousePosition = { x: event.clientX, y: event.clientY };
+        }
+
+        let isClick = true;
+        function onClick(event) {
+            if (isClick && interactionState === 'vortex') {
+                event.preventDefault();
+                
+                // START MUSIC ON SINGLE CLICK (Fallback for mousedown)
+                if (!isMusicPlaying) {
+                    startAmbientMusic();
+                }
+
+                // Mood shift happens here on single click (word generation)
+                if (isMusicPlaying) {
+                    shiftMusicMood();
+                }
+
+                generateAndDisplayWord();
+            }
+        }
+
+        const dragThreshold = 5;
+        document.getElementById('container').addEventListener('mousedown', () => { isClick = true; });
+        document.getElementById('container').addEventListener('mousemove', (e) => {
+            if (isDragging && (Math.abs(e.clientX - previousMousePosition.x) > dragThreshold || Math.abs(e.clientY - previousMousePosition.y) > dragThreshold)) {
+                isClick = false;
+            }
+        });
+        document.getElementById('container').addEventListener('mouseup', () => { isDragging = false; });
+
+
+        // --- Particle Logic (Organic Flow) ---
 
         /**
          * Calculates the next position for each particle in the continuous vortex flow.
@@ -668,7 +578,7 @@
             geometry.attributes.color.needsUpdate = true;
         }
 
-        // --- Text Generation & Shaping (Same as before) ---
+        // --- Text Generation & Shaping ---
 
         async function generateAndDisplayWord() {
             const loadingElement = document.getElementById('loading-indicator');
@@ -773,8 +683,10 @@
             }
         }
 
-        // ... (rest of the text generation/API functions are the same) ...
-
+        /**
+         * Uses a hidden 2D canvas to render text and sample pixel positions from it.
+         * Now calculates a scale factor to normalize word size.
+         */
         function getTextParticlePositions(text) {
             const canvas = document.getElementById('text-canvas');
             const ctx = canvas.getContext('2d');
@@ -832,11 +744,15 @@
             // Return positions AND the calculated scale factor
             return { positions: pixelPositions.slice(0, PARTICLE_COUNT), scaleFactor: finalScaleFactor };
         }
-        
+
+        /**
+         * Calls the Gemini API to get a list of evocative words in JSON format.
+         */
         async function fetchEvocativeWord() {
             const systemPrompt = "You are a creative poet and philosopher focused on the full spectrum of the human psyche. Generate a list of five single, non-hyphenated English words that are **seven letters long or less**. **Strongly bias the list toward gentle, tender, or humanistic concepts (like 'song', 'memory', 'breeze', 'mother')**. Allow one word to be structural or deeply psychological (like 'Id', 'Shadow', 'Repress', 'Oedipus'). Do not use the word 'trauma'.";
             const userQuery = "Generate five evocative words.";
 
+            // Request JSON structure for easy parsing and reliability
             const generationConfig = {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -880,6 +796,7 @@
                 // Parse the JSON response
                 try {
                     const parsedJson = JSON.parse(text);
+                    // Return the array of words
                     if (parsedJson.words && Array.isArray(parsedJson.words) && parsedJson.words.length > 0) {
                         return parsedJson.words;
                     } else {
@@ -894,7 +811,7 @@
             return withBackoff(callApi);
         }
 
-        // --- Animation Loop (Continued) ---
+        // --- Animation Loop (Updated with Smootherstep Easing) ---
 
         const clock = new THREE.Clock();
 
@@ -917,23 +834,28 @@
             rotationTarget.y += deltaTime * currentSpinSpeed; 
 
             // 2. CORE FLOW LOGIC: Always run the flow calculation to handle respawning and movement
+            // This updates 'originalPositions' with the *target* flow location.
             updateFlowDataAndTarget(time);
 
             const activePositions = geometry.attributes.position.array;
 
             // 3. Determine Final Position based on Interaction State
             if (interactionState === 'vortex' || interactionState === 'loading') {
+                // If in vortex or loading state, the active positions are simply the calculated flow targets
                 for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
                     activePositions[i] = originalPositions[i];
                 }
             } else if (interactionState === 'word') {
+                // Transition particles to word shape (Target: targetPositions)
                 wordDisplayTime += deltaTime * 1000;
                 
                 const linearProgress = Math.min(1, wordDisplayTime / WORD_TRANSITION_MS); 
+                // Apply a smoother step curve to the progress for organic movement
                 const easedProgress = THREE.MathUtils.smootherstep(linearProgress, 0, 1); 
 
                 for (let i = 0; i < PARTICLE_COUNT; i++) {
                     const i3 = i * 3;
+                    // LERP using the eased progress
                     activePositions[i3 + 0] = THREE.MathUtils.lerp(wordStartPositions[i3 + 0], targetPositions[i3 + 0], easedProgress);
                     activePositions[i3 + 1] = THREE.MathUtils.lerp(wordStartPositions[i3 + 1], targetPositions[i3 + 1], easedProgress);
                     activePositions[i3 + 2] = THREE.MathUtils.lerp(wordStartPositions[i3 + 2], targetPositions[i3 + 2], easedProgress);
@@ -945,18 +867,22 @@
                 }
 
             } else if (interactionState === 'returning') {
+                // Transition particles back to flowing vortex shape (Target: originalPositions - which is continuously moving)
                 wordDisplayTime += deltaTime * 1000;
                 
                 const linearProgress = Math.min(1, wordDisplayTime / 2000); 
+                // Apply a smoother step curve to the progress for organic movement
                 const easedProgress = THREE.MathUtils.smootherstep(linearProgress, 0, 1); 
 
                 for (let i = 0; i < PARTICLE_COUNT; i++) {
                     const i3 = i * 3;
+                    // LERP from the word's target (targetPositions) back to the dynamic flow target (originalPositions)
                     activePositions[i3 + 0] = THREE.MathUtils.lerp(targetPositions[i3 + 0], originalPositions[i3 + 0], easedProgress);
                     activePositions[i3 + 1] = THREE.MathUtils.lerp(targetPositions[i3 + 1], originalPositions[i3 + 1], easedProgress);
                     activePositions[i3 + 2] = THREE.MathUtils.lerp(targetPositions[i3 + 2], originalPositions[i3 + 2], easedProgress);
                 }
 
+                // Correct check for completion
                 if (linearProgress >= 1) {
                     interactionState = 'vortex';
                 }
