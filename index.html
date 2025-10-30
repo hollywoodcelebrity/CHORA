@@ -156,6 +156,9 @@
         let touchStartDistance = 0;
         let lastTouchX = 0;
         let lastTouchY = 0;
+        let touchStartTime = 0; // New: To detect short taps
+        const MAX_TAP_DURATION = 300; // milliseconds
+        const MAX_TAP_MOVEMENT = 10; // pixels
 
         // --- AI Caching and State ---
         let wordCache = []; 
@@ -341,22 +344,23 @@
         }
 
         function onTouchStart(event) {
-            event.preventDefault(); // Prevent scrolling/default browser action
+            // Check for multi-touch first
+            if (event.touches.length >= 2) {
+                // Two or more touches for zooming/pinching
+                isDragging = false; 
+                touchStartDistance = getTouchDistance(event.touches);
+            } else if (event.touches.length === 1) {
+                // Single touch for rotation/click detection
+                isDragging = true;
+                lastTouchX = event.touches[0].clientX;
+                lastTouchY = event.touches[0].clientY;
+                touchStartTime = Date.now(); // Record start time for tap check
+            }
             
             if (!isMusicPlaying) {
                 startAmbientMusic();
             }
-
-            if (event.touches.length === 1) {
-                // Single touch for rotation
-                isDragging = true;
-                lastTouchX = event.touches[0].clientX;
-                lastTouchY = event.touches[0].clientY;
-            } else if (event.touches.length >= 2) {
-                // Two or more touches for zooming/pinching
-                isDragging = false; // Disable rotation when zooming
-                touchStartDistance = getTouchDistance(event.touches);
-            }
+            event.preventDefault(); // Prevent scrolling/default browser action
         }
 
         function onTouchMove(event) {
@@ -369,6 +373,11 @@
 
                 const deltaX = touchX - lastTouchX;
                 const deltaY = touchY - lastTouchY;
+
+                // Check if movement is significant enough to cancel a 'click'
+                if (Math.abs(deltaX) > MAX_TAP_MOVEMENT || Math.abs(deltaY) > MAX_TAP_MOVEMENT) {
+                    isClick = false; 
+                }
 
                 rotationTarget.y += deltaX * rotationSpeed * 2; // Increased sensitivity for touch
                 rotationTarget.x += deltaY * rotationSpeed * 2; // Increased sensitivity for touch
@@ -398,10 +407,24 @@
         }
 
         function onTouchEnd(event) {
+            // Check for a single-touch tap that qualifies as a 'click'
+            const touchDuration = Date.now() - touchStartTime;
+
+            if (isDragging && touchDuration < MAX_TAP_DURATION && isClick) {
+                 // Simulate a successful single click for word generation
+                 if (interactionState === 'vortex') {
+                    if (!isMusicPlaying) {
+                        startAmbientMusic();
+                    }
+                    if (isMusicPlaying) {
+                        shiftMusicMood();
+                    }
+                    generateAndDisplayWord();
+                 }
+            }
+
             isDragging = false;
-            // The single click logic uses the mouse handlers, so we'll check here to see if a single touch was quick enough to be a click
-            
-            // Reset distance tracking
+            isClick = true; // Reset click flag for next touch
             touchStartDistance = 0; 
         }
 
@@ -410,6 +433,8 @@
         function onMouseDown(event) {
             isDragging = true;
             previousMousePosition = { x: event.clientX, y: event.clientY };
+            isClick = true; // Reset mouse click flag
+            
             // START MUSIC ON ANY INTERACTION
             if (!isMusicPlaying) {
                  startAmbientMusic();
@@ -425,6 +450,11 @@
 
             const deltaX = event.clientX - previousMousePosition.x;
             const deltaY = event.clientY - previousMousePosition.y;
+            
+            // Check if movement is significant enough to cancel a 'click'
+            if (Math.abs(deltaX) > dragThreshold || Math.abs(deltaY) > dragThreshold) {
+                isClick = false;
+            }
 
             rotationTarget.y += deltaX * rotationSpeed;
             rotationTarget.x += deltaY * rotationSpeed;
@@ -434,9 +464,8 @@
             previousMousePosition = { x: event.clientX, y: event.clientY };
         }
 
-        let isClick = true;
+        // The mouse click handler remains, but isClick is now set in mouse/touch move
         function onClick(event) {
-            // Note: Click only triggers if the mouse/touch wasn't dragged past the threshold (handled by existing listeners)
             if (isClick && interactionState === 'vortex') {
                 event.preventDefault();
                 
@@ -453,13 +482,7 @@
         }
 
         const dragThreshold = 5;
-        document.getElementById('container').addEventListener('mousedown', () => { isClick = true; });
-        document.getElementById('container').addEventListener('mousemove', (e) => {
-            if (isDragging && (Math.abs(e.clientX - previousMousePosition.x) > dragThreshold || Math.abs(e.clientY - previousMousePosition.y) > dragThreshold)) {
-                isClick = false;
-            }
-        });
-        document.getElementById('container').addEventListener('mouseup', () => { isDragging = false; });
+        // NOTE: The separate mouse event handlers were removed/simplified as the main functions now handle setting isClick/isDragging.
 
 
         // --- Particle Logic (Core functions remain the same) ---
